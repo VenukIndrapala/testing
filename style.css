@@ -1,17 +1,11 @@
 :root {
   --page-bg: #000;
-  --board-bg: #285b8d;
-  --line: rgba(255, 255, 255, 0.82);
-  --line-soft: rgba(255, 255, 255, 0.18);
-  --white: #fff;
-  --blue: #4f8dff;
-  --blue-soft: #79a9ff;
-  --red: #ff161d;
-  --red-soft: #ff6e73;
+  --board-bg: #1e4c7f;
 }
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -19,70 +13,74 @@ body {
   width: 100%;
   height: 100%;
   margin: 0;
-}
-
-html {
   background: var(--page-bg);
+  overscroll-behavior: none;
 }
 
+/*
+ * position: fixed on the body stops iOS rubber-banding and
+ * pull-to-refresh, and sidesteps 100vh / 100dvh differences.
+ */
 body {
-  min-height: 100dvh;
+  position: fixed;
+  inset: 0;
   overflow: hidden;
-  background: var(--page-bg);
   font-family: Arial, Helvetica, sans-serif;
+  touch-action: none;
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
 }
 
 .page {
-  width: 100%;
-  height: 100%;
+  position: fixed;
+  inset: 0;
   display: grid;
   place-items: center;
 }
 
+/*
+ * Desktop: a centred 1.31:1 board on black, like the reference video.
+ * The second width line is ignored by browsers without dvh support.
+ */
 .game-wrap {
-  width: min(92vw, 760px, calc(88dvh * 1.31));
-  aspect-ratio: 1.31 / 1;
   position: relative;
+  width: min(92vw, 760px, calc(92vh * 1.31));
+  width: min(92vw, 760px, calc(92dvh * 1.31));
+  aspect-ratio: 1.31 / 1;
+  overflow: hidden;
+  background: var(--board-bg);
   touch-action: none;
 }
 
 #gameCanvas {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
-  background: var(--board-bg);
   outline: none;
   touch-action: none;
 }
 
 /*
- * Mobile:
- * Use the entire viewport.
- *
- * The previous version limited the game to 74dvh,
- * which caused the game to occupy only the middle
- * portion of the phone screen.
+ * Phones, tablets and narrow windows: the board fills the whole
+ * screen. The canvas is positioned from the viewport edges, so no
+ * fixed 100vh / 100dvh heights are needed. The script reads the
+ * safe-area insets and keeps the court clear of the notch and the
+ * home indicator, while the board colour still fills behind them.
  */
-@media (max-width: 640px) {
+@media (max-width: 700px), (pointer: coarse) {
   .page {
-    width: 100vw;
-    height: 100dvh;
+    background: var(--board-bg);
   }
 
   .game-wrap {
-    width: 100vw;
-    height: 100dvh;
-    max-width: none;
-    max-height: none;
+    position: fixed;
+    inset: 0;
+    width: auto;
+    height: auto;
     aspect-ratio: auto;
-  }
-
-  #gameCanvas {
-    width: 100vw;
-    height: 100dvh;
   }
 }
 
