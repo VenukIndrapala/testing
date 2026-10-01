@@ -1,0 +1,72 @@
+:root {
+  --page-bg: #000;
+  --board-bg: #285b8d;
+  --line: rgba(255, 255, 255, 0.82);
+  --line-soft: rgba(255, 255, 255, 0.18);
+  --white: #fff;
+  --blue: #4f8dff;
+  --blue-soft: #79a9ff;
+  --red: #ff161d;
+  --red-soft: #ff6e73;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--page-bg);
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.page {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.game-wrap {
+  width: min(92vw, 760px, calc(88dvh * 1.31));
+  aspect-ratio: 1.31 / 1;
+  position: relative;
+  touch-action: none;
+}
+
+#gameCanvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: var(--board-bg);
+  outline: none;
+  touch-action: none;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .game-wrap {
+    width: min(100vw, calc(74dvh * 1.31));
+  }
+}
