@@ -9,16 +9,29 @@
   const GAME_RATIO = 1.31;
   const TAU = Math.PI * 2;
   const WIN_SCORE = 5;
+
   const START_ANGLE_MIN = -0.30;
   const START_ANGLE_MAX = 0.30;
 
   let W = 472;
   let H = 360;
-  let dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  let dpr = Math.min(
+    window.devicePixelRatio || 1,
+    2
+  );
+
   let running = true;
   let roundOver = false;
   let aiResetTimer = null;
 
+  /*
+   * Goal animation.
+   *
+   * side:
+   *   "top"    = red AI goal
+   *   "bottom" = blue player goal
+   */
   const goalAnimation = {
     active: false,
     side: null,
@@ -31,6 +44,7 @@
   };
 
   let lastTime = performance.now();
+
   let audioCtx = null;
   let audioReady = false;
 
@@ -47,6 +61,21 @@
     right: 0,
     top: 0,
     bottom: 0,
+  };
+
+  /*
+   * These are the actual colored goal bars.
+   *
+   * They are calculated in resize() so the goal
+   * collision area exactly matches what is drawn.
+   */
+  const goals = {
+    width: 0,
+    height: 0,
+    left: 0,
+    right: 0,
+    topY: 0,
+    bottomY: 0,
   };
 
   const player = {
@@ -85,73 +114,217 @@
   };
 
   const keys = new Set();
+
   let pointerActive = false;
 
+  /*
+   * --------------------------------------------------
+   * RESIZE
+   * --------------------------------------------------
+   */
+
   function resize() {
-    const rect = wrap.getBoundingClientRect();
+    const rect =
+      wrap.getBoundingClientRect();
 
-    W = Math.max(320, Math.round(rect.width));
-    H = Math.max(250, Math.round(rect.height));
+    W = Math.max(
+      320,
+      Math.round(rect.width)
+    );
 
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    H = Math.max(
+      250,
+      Math.round(rect.height)
+    );
 
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
+    dpr = Math.min(
+      window.devicePixelRatio || 1,
+      2
+    );
 
-    canvas.style.width = `${W}px`;
-    canvas.style.height = `${H}px`;
+    canvas.width =
+      Math.round(W * dpr);
 
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    canvas.height =
+      Math.round(H * dpr);
 
-    const fieldW = W * 0.64;
+    canvas.style.width =
+      `${W}px`;
 
-    court.left = (W - fieldW) / 2;
-    court.right = court.left + fieldW;
-    court.top = H * 0.025;
-    court.bottom = H * 0.965;
+    canvas.style.height =
+      `${H}px`;
 
-    player.r = Math.max(13, Math.min(21, W * 0.036));
+    ctx.setTransform(
+      dpr,
+      0,
+      0,
+      dpr,
+      0,
+      0
+    );
+
+    /*
+     * Court occupies most of the available screen.
+     */
+    const fieldW =
+      W * 0.64;
+
+    court.left =
+      (W - fieldW) / 2;
+
+    court.right =
+      court.left + fieldW;
+
+    court.top =
+      H * 0.025;
+
+    court.bottom =
+      H * 0.965;
+
+    /*
+     * Mallet sizes.
+     */
+    player.r =
+      Math.max(
+        13,
+        Math.min(
+          21,
+          W * 0.036
+        )
+      );
+
     ai.r = player.r;
-    puck.r = Math.max(7, Math.min(11.5, W * 0.021));
 
-    player.y = court.bottom - H * 0.115;
-    ai.y = court.top + H * 0.06;
+    puck.r =
+      Math.max(
+        7,
+        Math.min(
+          11.5,
+          W * 0.021
+        )
+      );
 
-    player.barY = court.bottom - 1;
-    ai.barY = court.top + 1;
+    /*
+     * Player and AI positions.
+     */
+    player.y =
+      court.bottom -
+      H * 0.115;
+
+    ai.y =
+      court.top +
+      H * 0.06;
+
+    /*
+     * Colored goal bars.
+     *
+     * These values are also used for collision
+     * detection, ensuring that what the player sees
+     * is exactly where the scoring area is.
+     */
+    goals.width =
+      (court.right - court.left) *
+      0.40;
+
+    goals.height =
+      Math.max(
+        2.1,
+        H * 0.0065
+      );
+
+    goals.left =
+      (W - goals.width) / 2;
+
+    goals.right =
+      goals.left +
+      goals.width;
+
+    goals.topY =
+      court.top + 1;
+
+    goals.bottomY =
+      court.bottom - 1;
+
+    /*
+     * The bars are drawn at these same positions.
+     */
+    ai.barY =
+      goals.topY;
+
+    player.barY =
+      goals.bottomY;
 
     if (!player.targetX) {
-      player.targetX = (court.left + court.right) / 2;
+      player.targetX =
+        (court.left +
+          court.right) / 2;
     }
 
     if (!ai.targetX) {
-      ai.targetX = (court.left + court.right) / 2;
+      ai.targetX =
+        (court.left +
+          court.right) / 2;
     }
 
-    player.x = clamp(
-      player.x || player.targetX,
-      court.left + player.r + 12,
-      court.right - player.r - 12
+    player.x =
+      clamp(
+        player.x ||
+          player.targetX,
+        court.left +
+          player.r +
+          12,
+        court.right -
+          player.r -
+          12
+      );
+
+    ai.x =
+      clamp(
+        ai.x ||
+          ai.targetX,
+        court.left +
+          ai.r +
+          12,
+        court.right -
+          ai.r -
+          12
+      );
+  }
+
+  function clamp(
+    value,
+    min,
+    max
+  ) {
+    return Math.max(
+      min,
+      Math.min(max, value)
     );
+  }
 
-    ai.x = clamp(
-      ai.x || ai.targetX,
-      court.left + ai.r + 12,
-      court.right - ai.r - 12
+  function lerp(
+    a,
+    b,
+    t
+  ) {
+    return (
+      a +
+      (b - a) * t
     );
   }
 
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
+  /*
+   * --------------------------------------------------
+   * PUCK RESET
+   * --------------------------------------------------
+   */
 
-  function lerp(a, b, t) {
-    return a + (b - a) * t;
-  }
-
-  function resetPuck(direction = null) {
+  function resetPuck(
+    direction = null
+  ) {
     puck.x = W / 2;
     puck.y = H / 2;
+
     puck.trail = [];
 
     const dir =
@@ -163,12 +336,20 @@
 
     const angle =
       START_ANGLE_MIN +
-      Math.random() * (START_ANGLE_MAX - START_ANGLE_MIN);
+      Math.random() *
+        (
+          START_ANGLE_MAX -
+          START_ANGLE_MIN
+        );
 
-    puck.speed = Math.max(
-      350,
-      Math.min(540, W * 0.84)
-    );
+    puck.speed =
+      Math.max(
+        350,
+        Math.min(
+          540,
+          W * 0.84
+        )
+      );
 
     puck.vx =
       Math.sin(angle) *
@@ -180,64 +361,122 @@
       Math.cos(angle) *
       puck.speed;
 
-    // A slight horizontal bias avoids repeated identical serves.
-    if (Math.abs(puck.vx) < puck.speed * 0.18) {
+    /*
+     * Avoid perfectly vertical serves.
+     */
+    if (
+      Math.abs(puck.vx) <
+      puck.speed * 0.18
+    ) {
       puck.vx =
-        (Math.random() < 0.5 ? -1 : 1) *
+        (
+          Math.random() < 0.5
+            ? -1
+            : 1
+        ) *
         puck.speed *
         0.20;
     }
 
-    // Keep every serve safely inside the court.
-    puck.x = clamp(
-      puck.x,
-      court.left + puck.r + 2,
-      court.right - puck.r - 2
-    );
+    puck.x =
+      clamp(
+        puck.x,
+        court.left +
+          puck.r +
+          2,
+        court.right -
+          puck.r -
+          2
+      );
 
-    puck.y = clamp(
-      puck.y,
-      court.top + puck.r + 2,
-      court.bottom - puck.r - 2
-    );
+    puck.y =
+      clamp(
+        puck.y,
+        court.top +
+          puck.r +
+          2,
+        court.bottom -
+          puck.r -
+          2
+      );
 
     state.servePulse = 1;
   }
 
-  function resetPuckFromConcedingSide(humanScored) {
+  /*
+   * Restart the puck after a point.
+   *
+   * If the human scores, the AI conceded and
+   * the puck starts near the AI side.
+   *
+   * If the AI scores, the player conceded and
+   * the puck starts near the player side.
+   */
+  function resetPuckFromConcedingSide(
+    humanScored
+  ) {
     puck.trail = [];
 
-    puck.speed = Math.max(
-      350,
-      Math.min(540, W * 0.84)
-    );
+    puck.speed =
+      Math.max(
+        350,
+        Math.min(
+          540,
+          W * 0.84
+        )
+      );
 
     const angle =
       START_ANGLE_MIN +
-      Math.random() * (START_ANGLE_MAX - START_ANGLE_MIN);
+      Math.random() *
+        (
+          START_ANGLE_MAX -
+          START_ANGLE_MIN
+        );
 
     const centreX =
-      (court.left + court.right) / 2;
+      (court.left +
+        court.right) / 2;
 
-    const safeX = clamp(
-      centreX +
-        (Math.random() - 0.5) *
-          (court.right - court.left) *
-          0.20,
-      court.left + puck.r + 2,
-      court.right - puck.r - 2
-    );
+    const safeX =
+      clamp(
+        centreX +
+          (Math.random() - 0.5) *
+            (court.right -
+              court.left) *
+            0.20,
 
-    // Restart in front of the side that conceded the point.
+        court.left +
+          puck.r +
+          2,
+
+        court.right -
+          puck.r -
+          2
+      );
+
     if (humanScored) {
-      // AI conceded, so serve from the top toward the player.
+      /*
+       * AI conceded.
+       * Serve from the top toward the player.
+       */
       puck.x = safeX;
 
-      puck.y = clamp(
-        ai.y + ai.r + puck.r + 12,
-        court.top + puck.r + 2,
-        court.bottom - puck.r - 2
-      );
+      puck.y =
+        clamp(
+          ai.y +
+            ai.r +
+            puck.r +
+            12,
+
+          court.top +
+            puck.r +
+            2,
+
+          court.bottom -
+            puck.r -
+            2
+        );
 
       puck.vx =
         Math.sin(angle) *
@@ -246,17 +485,31 @@
 
       puck.vy =
         Math.abs(
-          Math.cos(angle) * puck.speed
+          Math.cos(angle) *
+          puck.speed
         );
     } else {
-      // Player conceded, so serve from the bottom toward the AI.
+      /*
+       * Player conceded.
+       * Serve from the bottom toward the AI.
+       */
       puck.x = safeX;
 
-      puck.y = clamp(
-        player.y - player.r - puck.r - 12,
-        court.top + puck.r + 2,
-        court.bottom - puck.r - 2
-      );
+      puck.y =
+        clamp(
+          player.y -
+            player.r -
+            puck.r -
+            12,
+
+          court.top +
+            puck.r +
+            2,
+
+          court.bottom -
+            puck.r -
+            2
+        );
 
       puck.vx =
         Math.sin(angle) *
@@ -265,12 +518,19 @@
 
       puck.vy =
         -Math.abs(
-          Math.cos(angle) * puck.speed
+          Math.cos(angle) *
+          puck.speed
         );
     }
 
     state.servePulse = 1;
   }
+
+  /*
+   * --------------------------------------------------
+   * GAME RESET
+   * --------------------------------------------------
+   */
 
   function resetGame() {
     state.leftScore = 0;
@@ -283,16 +543,24 @@
     goalAnimation.side = null;
     goalAnimation.progress = 0;
 
-    clearTimeout(aiResetTimer);
+    clearTimeout(
+      aiResetTimer
+    );
+
     aiResetTimer = null;
 
     player.targetX =
-      (court.left + court.right) / 2;
+      (court.left +
+        court.right) / 2;
 
-    ai.targetX = player.targetX;
+    ai.targetX =
+      player.targetX;
 
-    player.x = player.targetX;
-    ai.x = ai.targetX;
+    player.x =
+      player.targetX;
+
+    ai.x =
+      ai.targetX;
 
     resetPuck();
 
@@ -300,16 +568,28 @@
       'Game restarted. First to five points wins.';
   }
 
+  /*
+   * --------------------------------------------------
+   * AUDIO
+   * --------------------------------------------------
+   */
+
   function ensureAudio() {
-    if (audioReady) return;
+    if (audioReady) {
+      return;
+    }
 
     try {
-      audioCtx = new (
-        window.AudioContext ||
-        window.webkitAudioContext
-      )();
+      audioCtx =
+        new (
+          window.AudioContext ||
+          window.webkitAudioContext
+        )();
 
-      if (audioCtx.state === 'suspended') {
+      if (
+        audioCtx.state ===
+        'suspended'
+      ) {
         audioCtx.resume();
       }
 
@@ -326,9 +606,15 @@
     volume = 0.035,
     endFrequency = null
   ) {
-    if (!audioReady || !audioCtx) return;
+    if (
+      !audioReady ||
+      !audioCtx
+    ) {
+      return;
+    }
 
-    const now = audioCtx.currentTime;
+    const now =
+      audioCtx.currentTime;
 
     const oscillator =
       audioCtx.createOscillator();
@@ -336,49 +622,73 @@
     const gain =
       audioCtx.createGain();
 
-    oscillator.type = type;
+    oscillator.type =
+      type;
 
-    oscillator.frequency.setValueAtTime(
-      frequency,
-      now
-    );
-
-    if (endFrequency !== null) {
-      oscillator.frequency.exponentialRampToValueAtTime(
-        Math.max(20, endFrequency),
-        now + duration
+    oscillator.frequency
+      .setValueAtTime(
+        frequency,
+        now
       );
+
+    if (
+      endFrequency !== null
+    ) {
+      oscillator.frequency
+        .exponentialRampToValueAtTime(
+          Math.max(
+            20,
+            endFrequency
+          ),
+          now + duration
+        );
     }
 
-    gain.gain.setValueAtTime(
-      0.0001,
-      now
-    );
+    gain.gain
+      .setValueAtTime(
+        0.0001,
+        now
+      );
 
-    gain.gain.exponentialRampToValueAtTime(
-      volume,
-      now + 0.006
-    );
+    gain.gain
+      .exponentialRampToValueAtTime(
+        volume,
+        now + 0.006
+      );
 
-    gain.gain.exponentialRampToValueAtTime(
-      0.0001,
-      now + duration
-    );
+    gain.gain
+      .exponentialRampToValueAtTime(
+        0.0001,
+        now + duration
+      );
 
     oscillator.connect(gain);
-    gain.connect(audioCtx.destination);
+    gain.connect(
+      audioCtx.destination
+    );
 
     oscillator.start(now);
-    oscillator.stop(now + duration + 0.02);
+
+    oscillator.stop(
+      now +
+        duration +
+        0.02
+    );
   }
 
-  function playPaddleSound(isHuman) {
+  function playPaddleSound(
+    isHuman
+  ) {
     tone(
-      isHuman ? 460 : 320,
+      isHuman
+        ? 460
+        : 320,
       0.055,
       'triangle',
       0.032,
-      isHuman ? 600 : 410
+      isHuman
+        ? 600
+        : 410
     );
   }
 
@@ -392,7 +702,9 @@
     );
   }
 
-  function playScoreSound(human) {
+  function playScoreSound(
+    human
+  ) {
     if (human) {
       tone(
         660,
@@ -436,26 +748,48 @@
     }
   }
 
-  function updatePointer(clientX) {
+  /*
+   * --------------------------------------------------
+   * POINTER / KEYBOARD
+   * --------------------------------------------------
+   */
+
+  function updatePointer(
+    clientX
+  ) {
     const rect =
       canvas.getBoundingClientRect();
 
     const x =
-      ((clientX - rect.left) / rect.width) * W;
+      (
+        (clientX -
+          rect.left) /
+        rect.width
+      ) * W;
 
-    player.targetX = clamp(
-      x,
-      court.left + player.r + 12,
-      court.right - player.r - 12
-    );
+    player.targetX =
+      clamp(
+        x,
+        court.left +
+          player.r +
+          12,
+
+        court.right -
+          player.r -
+          12
+      );
   }
 
-  function handlePointer(event) {
+  function handlePointer(
+    event
+  ) {
     ensureAudio();
 
     pointerActive = true;
 
-    updatePointer(event.clientX);
+    updatePointer(
+      event.clientX
+    );
   }
 
   canvas.addEventListener(
@@ -473,7 +807,8 @@
     'pointermove',
     (event) => {
       if (
-        event.pointerType === 'mouse' ||
+        event.pointerType ===
+          'mouse' ||
         pointerActive ||
         event.buttons
       ) {
@@ -503,7 +838,8 @@
 
       if (
         roundOver &&
-        state.leftScore >= WIN_SCORE
+        state.leftScore >=
+          WIN_SCORE
       ) {
         resetGame();
       }
@@ -528,7 +864,11 @@
         ' ',
       ];
 
-      if (relevant.includes(event.key)) {
+      if (
+        relevant.includes(
+          event.key
+        )
+      ) {
         event.preventDefault();
       }
 
@@ -536,7 +876,8 @@
 
       if (
         roundOver &&
-        state.leftScore >= WIN_SCORE &&
+        state.leftScore >=
+          WIN_SCORE &&
         (
           event.key === 'r' ||
           event.key === 'R' ||
@@ -552,11 +893,21 @@
   window.addEventListener(
     'keyup',
     (event) => {
-      keys.delete(event.key);
+      keys.delete(
+        event.key
+      );
     }
   );
 
-  function updatePlayer(dt) {
+  /*
+   * --------------------------------------------------
+   * PLAYER
+   * --------------------------------------------------
+   */
+
+  function updatePlayer(
+    dt
+  ) {
     let direction = 0;
 
     if (
@@ -581,41 +932,63 @@
         player.maxSpeed *
         dt;
 
-      player.targetX = clamp(
-        player.targetX,
-        court.left + player.r + 12,
-        court.right - player.r - 12
-      );
+      player.targetX =
+        clamp(
+          player.targetX,
+
+          court.left +
+            player.r +
+            12,
+
+          court.right -
+            player.r -
+            12
+        );
     }
 
     const desired =
-      player.targetX - player.x;
+      player.targetX -
+      player.x;
 
     const maxStep =
-      player.maxSpeed * dt;
+      player.maxSpeed *
+      dt;
 
-    const step = clamp(
-      desired,
-      -maxStep,
-      maxStep
-    );
+    const step =
+      clamp(
+        desired,
+        -maxStep,
+        maxStep
+      );
 
     player.vx =
-      dt > 0 ? step / dt : 0;
+      dt > 0
+        ? step / dt
+        : 0;
 
     player.x += step;
   }
 
-  function predictPuckXAtY(targetY) {
+  /*
+   * --------------------------------------------------
+   * AI
+   * --------------------------------------------------
+   */
+
+  function predictPuckXAtY(
+    targetY
+  ) {
     if (
-      Math.abs(puck.vy) < 1 ||
+      Math.abs(puck.vy) <
+        1 ||
       puck.vy >= 0
     ) {
       return puck.x;
     }
 
     const t =
-      (targetY - puck.y) /
+      (targetY -
+        puck.y) /
       puck.vy;
 
     if (t <= 0) {
@@ -643,104 +1016,144 @@
       return x;
     }
 
-    // Reflect prediction against the court's
-    // horizontal walls.
+    /*
+     * Reflect prediction against the
+     * left/right walls.
+     */
     let local =
       (x - minX) %
       (2 * span);
 
     if (local < 0) {
-      local += 2 * span;
+      local +=
+        2 * span;
     }
 
     if (local > span) {
       local =
-        2 * span - local;
+        2 * span -
+        local;
     }
 
     return minX + local;
   }
 
-  function updateAI(dt) {
+  function updateAI(
+    dt
+  ) {
     ai.noiseTimer -= dt;
 
-    if (ai.noiseTimer <= 0) {
+    if (
+      ai.noiseTimer <= 0
+    ) {
       ai.noiseTimer =
         0.22 +
-        Math.random() * 0.36;
+        Math.random() *
+          0.36;
 
       ai.error =
-        (Math.random() - 0.5) *
+        (Math.random() -
+          0.5) *
         W *
         0.07;
     }
 
     let target =
-      (court.left + court.right) / 2;
+      (court.left +
+        court.right) / 2;
 
     const puckHeadingTowardAI =
       puck.vy < 0;
 
-    if (puckHeadingTowardAI) {
+    if (
+      puckHeadingTowardAI
+    ) {
       const predicted =
         predictPuckXAtY(
-          ai.y + ai.r * 1.1
+          ai.y +
+            ai.r *
+              1.1
         );
 
       target =
         predicted +
         ai.error;
     } else {
-      target = lerp(
-        (court.left + court.right) / 2,
-        puck.x,
-        0.18
-      );
+      target =
+        lerp(
+          (court.left +
+            court.right) /
+            2,
+          puck.x,
+          0.18
+        );
     }
 
-    target = clamp(
-      target,
-      court.left + ai.r + 12,
-      court.right - ai.r - 12
-    );
+    target =
+      clamp(
+        target,
 
-    ai.targetX = target;
+        court.left +
+          ai.r +
+          12,
+
+        court.right -
+          ai.r -
+          12
+      );
+
+    ai.targetX =
+      target;
 
     const response =
       ai.reaction * 4.4;
 
     const desired =
-      ai.targetX - ai.x;
+      ai.targetX -
+      ai.x;
 
     const maxStep =
       ai.maxSpeed * dt;
 
-    const step = clamp(
-      desired *
-        response *
-        dt,
-      -maxStep,
-      maxStep
-    );
+    const step =
+      clamp(
+        desired *
+          response *
+          dt,
+
+        -maxStep,
+        maxStep
+      );
 
     ai.vx =
-      dt > 0 ? step / dt : 0;
+      dt > 0
+        ? step / dt
+        : 0;
 
     ai.x += step;
   }
+
+  /*
+   * --------------------------------------------------
+   * MALLET COLLISION
+   * --------------------------------------------------
+   */
 
   function circleCollision(
     mallet,
     isHuman
   ) {
     const dx =
-      puck.x - mallet.x;
+      puck.x -
+      mallet.x;
 
     const dy =
-      puck.y - mallet.y;
+      puck.y -
+      mallet.y;
 
     const minDistance =
-      puck.r + mallet.r;
+      puck.r +
+      mallet.r;
 
     const distSq =
       dx * dx +
@@ -748,30 +1161,39 @@
 
     if (
       distSq >
-      minDistance * minDistance
+      minDistance *
+        minDistance
     ) {
       return false;
     }
 
     const dist =
-      Math.sqrt(distSq) ||
-      0.0001;
+      Math.sqrt(
+        distSq
+      ) || 0.0001;
 
-    let nx =
+    const nx =
       dx / dist;
 
-    let ny =
+    const ny =
       dy / dist;
 
-    // Push puck out of mallet.
+    /*
+     * Push puck out of mallet.
+     */
     const overlap =
-      minDistance - dist;
+      minDistance -
+      dist;
 
-    puck.x += nx * overlap;
-    puck.y += ny * overlap;
+    puck.x +=
+      nx * overlap;
+
+    puck.y +=
+      ny * overlap;
 
     const relativeVx =
-      puck.vx - mallet.vx;
+      puck.vx -
+      mallet.vx;
 
     const relativeVy =
       puck.vy;
@@ -780,18 +1202,26 @@
       relativeVx * nx +
       relativeVy * ny;
 
-    if (relativeDot < 0) {
+    if (
+      relativeDot < 0
+    ) {
       puck.vx -=
-        2 * relativeDot * nx;
+        2 *
+        relativeDot *
+        nx;
 
       puck.vy -=
-        2 * relativeDot * ny;
+        2 *
+        relativeDot *
+        ny;
     } else {
       puck.vx =
         -puck.vx;
     }
 
-    // Add controlled mallet movement.
+    /*
+     * Add controlled mallet movement.
+     */
     puck.vx +=
       mallet.vx * 0.22;
 
@@ -836,7 +1266,9 @@
     puck.vy =
       unitY * boosted;
 
-    // Prevent near-flat loops.
+    /*
+     * Prevent near-flat loops.
+     */
     const minVertical =
       boosted * 0.38;
 
@@ -847,9 +1279,11 @@
       puck.vy =
         Math.sign(
           puck.vy ||
-            (isHuman
-              ? -1
-              : 1)
+            (
+              isHuman
+                ? -1
+                : 1
+            )
         ) *
         minVertical;
 
@@ -857,7 +1291,8 @@
         Math.sqrt(
           Math.max(
             0,
-            boosted * boosted -
+            boosted *
+              boosted -
               puck.vy *
                 puck.vy
           )
@@ -866,10 +1301,12 @@
       puck.vx =
         Math.sign(
           puck.vx ||
-            (Math.random() <
-            0.5
-              ? -1
-              : 1)
+            (
+              Math.random() <
+              0.5
+                ? -1
+                : 1
+            )
         ) *
         horiz;
     }
@@ -878,13 +1315,25 @@
 
     state.pulse = 1;
 
-    playPaddleSound(isHuman);
+    playPaddleSound(
+      isHuman
+    );
 
     return true;
   }
 
-  function scorePoint(humanScored) {
-    if (roundOver) return;
+  /*
+   * --------------------------------------------------
+   * SCORING
+   * --------------------------------------------------
+   */
+
+  function scorePoint(
+    humanScored
+  ) {
+    if (roundOver) {
+      return;
+    }
 
     if (humanScored) {
       state.leftScore += 1;
@@ -895,11 +1344,14 @@
     state.flash = 1;
     state.pulse = 0.75;
 
-    playScoreSound(humanScored);
+    playScoreSound(
+      humanScored
+    );
 
     if (
       humanScored &&
-      state.leftScore >= WIN_SCORE
+      state.leftScore >=
+        WIN_SCORE
     ) {
       roundOver = true;
       running = false;
@@ -912,7 +1364,8 @@
 
     if (
       !humanScored &&
-      state.rightScore >= WIN_SCORE
+      state.rightScore >=
+        WIN_SCORE
     ) {
       roundOver = true;
       running = false;
@@ -921,9 +1374,12 @@
         'Red Wins! The game will restart automatically.';
 
       aiResetTimer =
-        window.setTimeout(() => {
-          resetGame();
-        }, 1250);
+        window.setTimeout(
+          () => {
+            resetGame();
+          },
+          1250
+        );
 
       return;
     }
@@ -936,12 +1392,14 @@
   }
 
   /*
-   * Top and bottom are the goal mouths.
-   *
-   * 'top'    = AI scores
-   * 'bottom' = player scores
+   * --------------------------------------------------
+   * GOAL ANIMATION
+   * --------------------------------------------------
    */
-  function beginGoal(side) {
+
+  function beginGoal(
+    side
+  ) {
     if (
       goalAnimation.active ||
       roundOver
@@ -949,22 +1407,40 @@
       return;
     }
 
-    goalAnimation.active = true;
-    goalAnimation.side = side;
-    goalAnimation.progress = 0;
-    goalAnimation.entryFlash = 1;
+    goalAnimation.active =
+      true;
 
-    goalAnimation.x = clamp(
-      puck.x,
-      court.left + puck.r + 4,
-      court.right - puck.r - 4
-    );
+    goalAnimation.side =
+      side;
+
+    goalAnimation.progress =
+      0;
+
+    goalAnimation.entryFlash =
+      1;
+
+    /*
+     * Keep the puck at the exact point
+     * where it touched the colored line.
+     */
+    goalAnimation.x =
+      clamp(
+        puck.x,
+        goals.left +
+          puck.r,
+        goals.right -
+          puck.r
+      );
 
     goalAnimation.startY =
       side === 'top'
-        ? court.top
-        : court.bottom;
+        ? goals.topY
+        : goals.bottomY;
 
+    /*
+     * Animate the puck slightly beyond
+     * the colored goal line.
+     */
     const margin =
       side === 'top'
         ? court.top
@@ -983,11 +1459,14 @@
       side === 'top'
         ? Math.max(
             puck.r * 1.25,
-            court.top - depth
+            goals.topY -
+              depth
           )
         : Math.min(
-            H - puck.r * 1.25,
-            court.bottom + depth
+            H -
+              puck.r * 1.25,
+            goals.bottomY +
+              depth
           );
 
     puck.x =
@@ -998,6 +1477,7 @@
 
     puck.vx = 0;
     puck.vy = 0;
+
     puck.trail = [];
 
     running = false;
@@ -1006,17 +1486,25 @@
       side === 'bottom'
         ? 520
         : 300,
+
       0.07,
+
       'triangle',
+
       0.028,
+
       side === 'bottom'
         ? 740
         : 190
     );
   }
 
-  function updateGoalAnimation(dt) {
-    if (!goalAnimation.active) {
+  function updateGoalAnimation(
+    dt
+  ) {
+    if (
+      !goalAnimation.active
+    ) {
       return;
     }
 
@@ -1054,23 +1542,147 @@
       );
 
     if (
-      goalAnimation.progress >= 1
+      goalAnimation.progress >=
+      1
     ) {
-      // Bottom goal = human scores.
-      // Top goal = AI scores.
+      /*
+       * The top red bar belongs to the AI.
+       * The bottom blue bar belongs to the player.
+       */
       const humanScored =
         goalAnimation.side ===
         'bottom';
 
-      goalAnimation.active = false;
-      goalAnimation.side = null;
-      goalAnimation.progress = 0;
+      goalAnimation.active =
+        false;
 
-      scorePoint(humanScored);
+      goalAnimation.side =
+        null;
+
+      goalAnimation.progress =
+        0;
+
+      scorePoint(
+        humanScored
+      );
     }
   }
 
-  function update(dt) {
+  /*
+   * --------------------------------------------------
+   * GOAL COLLISION
+   * --------------------------------------------------
+   *
+   * This is the key change.
+   *
+   * The puck scores ONLY if:
+   *
+   * 1. It reaches the top/bottom level, AND
+   * 2. Its X position overlaps the colored goal line.
+   *
+   * Reaching the top/bottom elsewhere results in
+   * a normal bounce.
+   */
+
+  function checkGoalCollision() {
+    const goalLeft =
+      goals.left;
+
+    const goalRight =
+      goals.right;
+
+    const puckOverGoal =
+      puck.x + puck.r >=
+        goalLeft &&
+      puck.x - puck.r <=
+        goalRight;
+
+    /*
+     * TOP RED GOAL
+     */
+    if (
+      puck.vy < 0 &&
+      puck.y -
+        puck.r <=
+        goals.topY
+    ) {
+      if (puckOverGoal) {
+        puck.y =
+          goals.topY;
+
+        beginGoal('top');
+
+        return true;
+      }
+
+      /*
+       * The puck reached the top,
+       * but NOT the red goal line.
+       * Bounce it back down.
+       */
+      puck.y =
+        court.top +
+        puck.r;
+
+      puck.vy =
+        Math.abs(
+          puck.vy
+        );
+
+      playWallSound();
+
+      return false;
+    }
+
+    /*
+     * BOTTOM BLUE GOAL
+     */
+    if (
+      puck.vy > 0 &&
+      puck.y +
+        puck.r >=
+        goals.bottomY
+    ) {
+      if (puckOverGoal) {
+        puck.y =
+          goals.bottomY;
+
+        beginGoal('bottom');
+
+        return true;
+      }
+
+      /*
+       * The puck reached the bottom,
+       * but NOT the blue goal line.
+       * Bounce it back up.
+       */
+      puck.y =
+        court.bottom -
+        puck.r;
+
+      puck.vy =
+        -Math.abs(
+          puck.vy
+        );
+
+      playWallSound();
+
+      return false;
+    }
+
+    return false;
+  }
+
+  /*
+   * --------------------------------------------------
+   * UPDATE
+   * --------------------------------------------------
+   */
+
+  function update(
+    dt
+  ) {
     state.pulse =
       Math.max(
         0,
@@ -1092,8 +1704,13 @@
           dt * 4.5
       );
 
-    if (goalAnimation.active) {
-      updateGoalAnimation(dt);
+    if (
+      goalAnimation.active
+    ) {
+      updateGoalAnimation(
+        dt
+      );
+
       return;
     }
 
@@ -1105,6 +1722,7 @@
     updateAI(dt);
 
     const subSteps = 2;
+
     const stepDt =
       dt / subSteps;
 
@@ -1122,47 +1740,23 @@
         stepDt;
 
       /*
-       * TOP AND BOTTOM ARE GOALS.
+       * ----------------------------------------------
+       * TOP/BOTTOM GOAL COLLISION
+       * ----------------------------------------------
        *
-       * The puck enters the goal as soon as it
-       * reaches either horizontal goal line.
+       * The colored red/blue lines are the ONLY
+       * scoring areas.
        */
-      const minY =
-        court.top +
-        puck.r;
-
-      const maxY =
-        court.bottom -
-        puck.r;
-
       if (
-        puck.y - puck.r <=
-          court.top &&
-        puck.vy < 0
+        checkGoalCollision()
       ) {
-        puck.y =
-          court.top;
-
-        beginGoal('top');
-
-        return;
-      }
-
-      if (
-        puck.y + puck.r >=
-          court.bottom &&
-        puck.vy > 0
-      ) {
-        puck.y =
-          court.bottom;
-
-        beginGoal('bottom');
-
         return;
       }
 
       /*
-       * LEFT AND RIGHT ARE NOW NORMAL WALLS.
+       * ----------------------------------------------
+       * LEFT/RIGHT WHITE WALLS
+       * ----------------------------------------------
        */
       const minX =
         court.left +
@@ -1174,22 +1768,35 @@
         puck.r -
         3;
 
-      if (puck.x < minX) {
+      if (
+        puck.x < minX
+      ) {
         puck.x = minX;
+
         puck.vx =
-          Math.abs(puck.vx);
+          Math.abs(
+            puck.vx
+          );
 
         playWallSound();
       } else if (
         puck.x > maxX
       ) {
         puck.x = maxX;
+
         puck.vx =
-          -Math.abs(puck.vx);
+          -Math.abs(
+            puck.vx
+          );
 
         playWallSound();
       }
 
+      /*
+       * ----------------------------------------------
+       * MALLET COLLISIONS
+       * ----------------------------------------------
+       */
       circleCollision(
         ai,
         false
@@ -1200,25 +1807,31 @@
         true
       );
 
-      // Safety clamp for high-speed frames
-      // or device lag.
-      puck.x = clamp(
-        puck.x,
-        court.left +
-          puck.r,
-        court.right -
-          puck.r
-      );
+      /*
+       * Safety clamp.
+       */
+      puck.x =
+        clamp(
+          puck.x,
+          court.left +
+            puck.r,
+          court.right -
+            puck.r
+        );
 
-      puck.y = clamp(
-        puck.y,
-        court.top +
-          puck.r,
-        court.bottom -
-          puck.r
-      );
+      puck.y =
+        clamp(
+          puck.y,
+          court.top +
+            puck.r,
+          court.bottom -
+            puck.r
+        );
     }
 
+    /*
+     * Puck trail.
+     */
     puck.trail.push({
       x: puck.x,
       y: puck.y,
@@ -1226,13 +1839,15 @@
     });
 
     if (
-      puck.trail.length > 8
+      puck.trail.length >
+      8
     ) {
       puck.trail.shift();
     }
 
     for (
-      const point of puck.trail
+      const point of
+      puck.trail
     ) {
       point.life -=
         dt * 4.0;
@@ -1244,6 +1859,12 @@
           point.life > 0
       );
   }
+
+  /*
+   * --------------------------------------------------
+   * DRAWING HELPERS
+   * --------------------------------------------------
+   */
 
   function roundedRect(
     x,
@@ -1313,9 +1934,14 @@
     ctx.font =
       `${weight} ${size}px Arial, Helvetica, sans-serif`;
 
-    ctx.fillStyle = color;
-    ctx.textAlign = align;
-    ctx.textBaseline = 'middle';
+    ctx.fillStyle =
+      color;
+
+    ctx.textAlign =
+      align;
+
+    ctx.textBaseline =
+      'middle';
 
     ctx.fillText(
       text,
@@ -1323,6 +1949,12 @@
       y
     );
   }
+
+  /*
+   * --------------------------------------------------
+   * BOARD
+   * --------------------------------------------------
+   */
 
   function drawBoard() {
     ctx.clearRect(
@@ -1332,7 +1964,9 @@
       H
     );
 
-    // Board gradient.
+    /*
+     * Board gradient.
+     */
     const boardGradient =
       ctx.createLinearGradient(
         0,
@@ -1361,7 +1995,9 @@
       H
     );
 
-    // Court boundaries.
+    /*
+     * LEFT/RIGHT WHITE WALLS.
+     */
     ctx.strokeStyle =
       'rgba(255,255,255,0.88)';
 
@@ -1395,7 +2031,9 @@
 
     ctx.stroke();
 
-    // Center line.
+    /*
+     * Center line.
+     */
     ctx.strokeStyle =
       'rgba(255,255,255,0.17)';
 
@@ -1419,35 +2057,31 @@
 
     ctx.stroke();
 
-    // Player bars visible in the reference.
-    const barWidth =
-      (court.right -
-        court.left) *
-      0.40;
-
-    const barHeight =
-      Math.max(
-        2.1,
-        H * 0.0065
-      );
-
-    const barX =
-      (W - barWidth) / 2;
+    /*
+     * ----------------------------------------------
+     * COLORED GOAL LINES
+     * ----------------------------------------------
+     *
+     * These exact dimensions are shared with
+     * checkGoalCollision().
+     */
 
     ctx.save();
 
-    ctx.shadowBlur = 7;
+    /*
+     * RED AI GOAL.
+     */
+    ctx.shadowBlur = 8;
     ctx.shadowColor =
-      'rgba(255,255,255,0.22)';
+      'rgba(255,90,95,0.65)';
 
-    // AI/top bar.
     roundedRect(
-      barX,
+      goals.left,
       ai.barY -
-        barHeight / 2,
-      barWidth,
-      barHeight,
-      barHeight / 2
+        goals.height / 2,
+      goals.width,
+      goals.height,
+      goals.height / 2
     );
 
     ctx.fillStyle =
@@ -1455,14 +2089,19 @@
 
     ctx.fill();
 
-    // Player/bottom bar.
+    /*
+     * BLUE PLAYER GOAL.
+     */
+    ctx.shadowColor =
+      'rgba(130,180,255,0.70)';
+
     roundedRect(
-      barX,
+      goals.left,
       player.barY -
-        barHeight / 2,
-      barWidth,
-      barHeight,
-      barHeight / 2
+        goals.height / 2,
+      goals.width,
+      goals.height,
+      goals.height / 2
     );
 
     ctx.fillStyle =
@@ -1472,7 +2111,9 @@
 
     ctx.restore();
 
-    // Side scores.
+    /*
+     * Scores.
+     */
     const scoreSize =
       Math.max(
         24,
@@ -1502,7 +2143,9 @@
       '700'
     );
 
-    // Top-left information.
+    /*
+     * Top-left information.
+     */
     const small =
       Math.max(
         10,
@@ -1541,9 +2184,13 @@
       'left',
       '700'
     );
-
-    // Center label intentionally omitted.
   }
+
+  /*
+   * --------------------------------------------------
+   * MALLETS
+   * --------------------------------------------------
+   */
 
   function drawMallet(
     mallet,
@@ -1553,7 +2200,6 @@
   ) {
     ctx.save();
 
-    // Main mallet glow.
     const rgba =
       isAI
         ? 'rgba(255,22,29,0.22)'
@@ -1614,7 +2260,9 @@
 
     ctx.fill();
 
-    // Subtle highlight.
+    /*
+     * Highlight.
+     */
     const highlight =
       ctx.createRadialGradient(
         mallet.x -
@@ -1660,9 +2308,19 @@
     ctx.restore();
   }
 
+  /*
+   * --------------------------------------------------
+   * PUCK
+   * --------------------------------------------------
+   */
+
   function drawPuck() {
+    /*
+     * Trail.
+     */
     for (
-      const point of puck.trail
+      const point of
+      puck.trail
     ) {
       const alpha =
         Math.max(
@@ -1672,9 +2330,11 @@
 
       const radius =
         puck.r *
-        (0.65 +
+        (
+          0.65 +
           point.life *
-            0.45);
+            0.45
+        );
 
       const trail =
         ctx.createRadialGradient(
@@ -1714,6 +2374,9 @@
 
     ctx.save();
 
+    /*
+     * Goal animation.
+     */
     if (
       goalAnimation.active
     ) {
@@ -1735,13 +2398,13 @@
         progress * 0.68;
 
       /*
-       * Goal-entry glow is now vertical
-       * because goals are at the top/bottom.
+       * Glow at the colored goal.
        */
       const ringY =
-        goalAnimation.side === 'top'
-          ? court.top
-          : court.bottom;
+        goalAnimation.side ===
+        'top'
+          ? goals.topY
+          : goals.bottomY;
 
       const ring =
         ctx.createRadialGradient(
@@ -1779,8 +2442,7 @@
       ctx.fill();
 
       /*
-       * Short vertical streak as the puck
-       * travels through the goal line.
+       * Vertical entry streak.
        */
       const streakLength =
         Math.max(
@@ -1792,7 +2454,8 @@
         );
 
       const direction =
-        goalAnimation.side === 'top'
+        goalAnimation.side ===
+        'top'
           ? -1
           : 1;
 
@@ -1860,6 +2523,9 @@
       );
     }
 
+    /*
+     * Puck glow.
+     */
     const glow =
       ctx.createRadialGradient(
         puck.x,
@@ -1895,6 +2561,9 @@
 
     ctx.fill();
 
+    /*
+     * Actual puck.
+     */
     ctx.shadowBlur =
       10 +
       state.pulse * 14 +
@@ -1920,6 +2589,12 @@
 
     ctx.restore();
   }
+
+  /*
+   * --------------------------------------------------
+   * WIN SCREEN
+   * --------------------------------------------------
+   */
 
   function drawWinOverlay() {
     if (!roundOver) {
@@ -2021,6 +2696,12 @@
     ctx.restore();
   }
 
+  /*
+   * --------------------------------------------------
+   * DRAW
+   * --------------------------------------------------
+   */
+
   function draw() {
     drawBoard();
 
@@ -2043,6 +2724,12 @@
     drawWinOverlay();
   }
 
+  /*
+   * --------------------------------------------------
+   * GAME LOOP
+   * --------------------------------------------------
+   */
+
   function frame(now) {
     const rawDt =
       (now - lastTime) /
@@ -2064,9 +2751,17 @@
     );
   }
 
+  /*
+   * --------------------------------------------------
+   * INITIALIZATION
+   * --------------------------------------------------
+   */
+
   function init() {
     resize();
+
     resetGame();
+
     draw();
 
     requestAnimationFrame(
@@ -2077,17 +2772,22 @@
   window.addEventListener(
     'resize',
     resize,
-    { passive: true }
+    {
+      passive: true,
+    }
   );
 
   window.addEventListener(
     'orientationchange',
-    () =>
+    () => {
       setTimeout(
         resize,
         50
-      ),
-    { passive: true }
+      );
+    },
+    {
+      passive: true,
+    }
   );
 
   init();
