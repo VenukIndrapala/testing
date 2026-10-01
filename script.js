@@ -6,8 +6,8 @@
    * ==================================================================== */
 
   const CFG = Object.freeze({
-    LEVEL: 50,            // Shown in the HUD; also drives AI difficulty (0-100)
-    WIN_SCORE: 7,         // "Reach 7 points"
+    AI_SKILL: 0.15,       // AI difficulty, 0 (easiest) to 1 (hardest)
+    WIN_SCORE: 5,         // "Reach 5 points"
 
     COURT_RATIO: 0.845,   // court width / height (measured from the video)
     MIN_RATIO: 0.42,      // never let the court get thinner than this
@@ -41,7 +41,7 @@
   });
 
   const TAU = Math.PI * 2;
-  const DIFF = Math.max(0, Math.min(1, CFG.LEVEL / 100));
+  const DIFF = Math.max(0, Math.min(1, CFG.AI_SKILL));
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const lerp = (a, b, t) => a + (b - a) * t;
@@ -604,18 +604,18 @@
     if (brain.think > 0) return;
 
     // Reaction latency: lower difficulty thinks less often.
-    brain.think = lerp(0.12, 0.04, DIFF) + rand(0, 0.03);
+    brain.think = lerp(0.30, 0.08, DIFF) + rand(0, 0.12);
 
     const S = view.S;
-    const errMax = (1 - DIFF) * 0.09 * court.w;
+    const errMax = (0.05 + (1 - DIFF) * 0.17) * court.w;
     brain.errX = rand(-1, 1) * errMax;
     brain.errY = rand(-1, 1) * errMax * 0.4;
 
     const homeY = court.top + court.h * 0.12;
     const speed = Math.hypot(puck.vx, puck.vy);
-    const attackLimit = (520 + 300 * DIFF) * S;
-    const strikeSpeed = (260 + 260 * DIFF) * S;
-    const moveSpeed = (480 + 520 * DIFF) * S;
+    const attackLimit = (330 + 300 * DIFF) * S;
+    const strikeSpeed = (150 + 260 * DIFF) * S;
+    const moveSpeed = (260 + 520 * DIFF) * S;
 
     let tx = court.cx;
     let ty = homeY;
@@ -653,8 +653,14 @@
     } else if (puck.vy < 0) {
       // Puck is coming toward us: slide across to where it will arrive.
       mode = 'defend';
-      tx = predictX(homeY + ai.r) + brain.errX;
       ty = homeY + brain.errY;
+
+      // Easier AI sometimes loses track of the puck for a moment.
+      if (Math.random() < 0.3 * (1 - DIFF)) {
+        tx = ai.x;
+      } else {
+        tx = predictX(homeY + ai.r) + brain.errX;
+      }
     } else {
       // Puck is heading away: drift back toward the middle.
       tx = lerp(court.cx, puck.x, 0.35);
@@ -1033,7 +1039,7 @@
 
     if (view.compact) {
       text(
-        `Level: ${CFG.LEVEL}  \u2022  First to ${CFG.WIN_SCORE}`,
+        `Reach ${CFG.WIN_SCORE} points`,
         view.W / 2,
         view.insetTop + 16,
         12,
@@ -1044,26 +1050,14 @@
       const fs = clamp(gutter * 0.15, 11, 16);
       const x = Math.max(10, gutter * 0.12);
 
-      text(`Level: ${CFG.LEVEL}`, x, court.top + fs * 1.45, fs, COLORS.text);
-      text('Reach', x, court.top + fs * 3.4, fs, COLORS.text);
-      text(`${CFG.WIN_SCORE} points`, x, court.top + fs * 4.5, fs, COLORS.text);
+      text('Reach', x, court.top + fs * 1.45, fs, COLORS.text);
+      text(`${CFG.WIN_SCORE} points`, x, court.top + fs * 2.55, fs, COLORS.text);
     }
 
     const size = clamp(gutter * 0.5, 24, 56);
 
     text(String(game.playerScore), gutter / 2, court.midY, size, COLORS.blue, 'center');
     text(String(game.aiScore), (view.W + court.right) / 2, court.midY, size, COLORS.red, 'center');
-
-    if (game.phase !== 'over') {
-      text(
-        'VS ai',
-        court.cx,
-        court.midY,
-        clamp(court.w * 0.075, 16, 30),
-        COLORS.text,
-        'center'
-      );
-    }
   }
 
   function drawGoalFlash() {
