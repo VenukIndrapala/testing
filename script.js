@@ -18,6 +18,17 @@
   let running = true;
   let roundOver = false;
   let aiResetTimer = null;
+
+  const goalAnimation = {
+    active: false,
+    side: null,
+    progress: 0,
+    duration: 0.34,
+    startX: 0,
+    endX: 0,
+    y: 0,
+    entryFlash: 0,
+  };
   let lastTime = performance.now();
   let audioCtx = null;
   let audioReady = false;
@@ -27,6 +38,7 @@
     rightScore: 0, // AI / red
     pulse: 0,
     flash: 0,
+    servePulse: 0,
   };
 
   const court = {
@@ -130,6 +142,35 @@
     if (Math.abs(puck.vx) < puck.speed * 0.18) {
       puck.vx = (Math.random() < 0.5 ? -1 : 1) * puck.speed * 0.20;
     }
+
+    // Keep every serve safely inside the two vertical court lines.
+    puck.x = clamp(puck.x, court.left + puck.r + 2, court.right - puck.r - 2);
+    puck.y = clamp(puck.y, court.top + puck.r + 2, court.bottom - puck.r - 2);
+    state.servePulse = 1;
+  }
+
+  function resetPuckFromConcedingSide(humanScored) {
+    puck.trail = [];
+    puck.speed = Math.max(350, Math.min(540, W * 0.84));
+
+    const angle = START_ANGLE_MIN + Math.random() * (START_ANGLE_MAX - START_ANGLE_MIN);
+    const centreX = (court.left + court.right) / 2;
+    const safeX = clamp(centreX + (Math.random() - 0.5) * (court.right - court.left) * 0.20, court.left + puck.r + 2, court.right - puck.r - 2);
+
+    // The puck restarts in front of the side that conceded the point.
+    if (humanScored) {
+      puck.x = safeX;
+      puck.y = clamp(ai.y + ai.r + puck.r + 12, court.top + puck.r + 2, court.bottom - puck.r - 2);
+      puck.vx = Math.sin(angle) * puck.speed * 0.64;
+      puck.vy = Math.abs(Math.cos(angle) * puck.speed);
+    } else {
+      puck.x = safeX;
+      puck.y = clamp(player.y - player.r - puck.r - 12, court.top + puck.r + 2, court.bottom - puck.r - 2);
+      puck.vx = Math.sin(angle) * puck.speed * 0.64;
+      puck.vy = -Math.abs(Math.cos(angle) * puck.speed);
+    }
+
+    state.servePulse = 1;
   }
 
   function resetGame() {
@@ -137,6 +178,9 @@
     state.rightScore = 0;
     roundOver = false;
     running = true;
+    goalAnimation.active = false;
+    goalAnimation.side = null;
+    goalAnimation.progress = 0;
     clearTimeout(aiResetTimer);
     aiResetTimer = null;
     player.targetX = (court.left + court.right) / 2;
@@ -393,13 +437,63 @@
       return;
     }
 
-    const nextDirection = humanScored ? -1 : 1;
-    resetPuck(nextDirection);
+    running = true;
+    resetPuckFromConcedingSide(humanScored);
+  }
+
+  function beginGoal(side) {
+    if (goalAnimation.active || roundOver) return;
+
+    goalAnimation.active = true;
+    goalAnimation.side = side;
+    goalAnimation.progress = 0;
+    goalAnimation.entryFlash = 1;
+    goalAnimation.y = clamp(puck.y, court.top + puck.r + 4, court.bottom - puck.r - 4);
+    goalAnimation.startX = side === 'left' ? court.left : court.right;
+
+    const margin = side === 'left' ? court.left : W - court.right;
+    const depth = Math.max(18, Math.min(margin * 0.72, W * 0.105));
+    goalAnimation.endX = side === 'left'
+      ? Math.max(puck.r * 1.25, court.left - depth)
+      : Math.min(W - puck.r * 1.25, court.right + depth);
+
+    puck.x = goalAnimation.startX;
+    puck.y = goalAnimation.y;
+    puck.vx = 0;
+    puck.vy = 0;
+    puck.trail = [];
+    running = false;
+    tone(side === 'left' ? 520 : 300, 0.07, 'triangle', 0.028, side === 'left' ? 740 : 190);
+  }
+
+  function updateGoalAnimation(dt) {
+    if (!goalAnimation.active) return;
+
+    goalAnimation.progress = Math.min(1, goalAnimation.progress + dt / goalAnimation.duration);
+    goalAnimation.entryFlash = Math.max(0, goalAnimation.entryFlash - dt * 5.5);
+
+    const eased = 1 - Math.pow(1 - goalAnimation.progress, 3);
+    puck.x = lerp(goalAnimation.startX, goalAnimation.endX, eased);
+    puck.y = goalAnimation.y;
+
+    if (goalAnimation.progress >= 1) {
+      const humanScored = goalAnimation.side === 'left';
+      goalAnimation.active = false;
+      goalAnimation.side = null;
+      goalAnimation.progress = 0;
+      scorePoint(humanScored);
+    }
   }
 
   function update(dt) {
     state.pulse = Math.max(0, state.pulse - dt * 5.4);
     state.flash = Math.max(0, state.flash - dt * 3.7);
+    state.servePulse = Math.max(0, state.servePulse - dt * 4.5);
+
+    if (goalAnimation.active) {
+      updateGoalAnimation(dt);
+      return;
+    }
 
     if (!running) return;
 
@@ -425,18 +519,24 @@
         playWallSound();
       }
 
+      // The side lines are the goal mouths. Check them before mallet collision so
+      // a puck that reaches the line always enters the goal instead of bouncing back.
+      if (puck.x - puck.r <= court.left && puck.vx < 0) {
+        puck.x = court.left;
+        beginGoal('left');
+        return;
+      }
+      if (puck.x + puck.r >= court.right && puck.vx > 0) {
+        puck.x = court.right;
+        beginGoal('right');
+        return;
+      }
+
       circleCollision(ai, false);
       circleCollision(player, true);
 
-      // Goals are at the left and right canvas edges, matching the reference behavior.
-      if (puck.x < -puck.r * 0.35) {
-        scorePoint(true);
-        return;
-      }
-      if (puck.x > W + puck.r * 0.35) {
-        scorePoint(false);
-        return;
-      }
+      // Safety clamp for high-speed frames or device lag.
+      puck.x = clamp(puck.x, court.left + puck.r, court.right - puck.r);
     }
 
     puck.trail.push({ x: puck.x, y: puck.y, life: 1 });
@@ -581,6 +681,42 @@
     }
 
     ctx.save();
+
+    if (goalAnimation.active) {
+      const progress = goalAnimation.progress;
+      const scale = lerp(1, 0.56, Math.pow(progress, 0.8));
+      const alpha = 1 - progress * 0.68;
+
+      // Soft goal-entry glow at the line where the puck crosses into the goal.
+      const ringX = goalAnimation.side === 'left' ? court.left : court.right;
+      const ring = ctx.createRadialGradient(ringX, puck.y, 0, ringX, puck.y, puck.r * 3.6);
+      ring.addColorStop(0, `rgba(255,255,255,${0.24 * goalAnimation.entryFlash})`);
+      ring.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = ring;
+      ctx.beginPath();
+      ctx.arc(ringX, puck.y, puck.r * 3.6, 0, TAU);
+      ctx.fill();
+
+      // A short directional streak makes the puck visibly travel through the goal line.
+      const streakLength = Math.max(16, Math.min(42, W * 0.055));
+      const direction = goalAnimation.side === 'left' ? -1 : 1;
+      const streak = ctx.createLinearGradient(puck.x, puck.y, puck.x - direction * streakLength, puck.y);
+      streak.addColorStop(0, `rgba(255,255,255,${0.22 * alpha})`);
+      streak.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = streak;
+      ctx.lineWidth = puck.r * 0.9;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(puck.x, puck.y);
+      ctx.lineTo(puck.x - direction * streakLength, puck.y);
+      ctx.stroke();
+
+      ctx.globalAlpha = alpha;
+      ctx.translate(puck.x, puck.y);
+      ctx.scale(scale, scale);
+      ctx.translate(-puck.x, -puck.y);
+    }
+
     const glow = ctx.createRadialGradient(puck.x, puck.y, 0, puck.x, puck.y, puck.r * 2.9);
     glow.addColorStop(0, 'rgba(219,233,255,0.48)');
     glow.addColorStop(1, 'rgba(219,233,255,0)');
@@ -589,7 +725,7 @@
     ctx.arc(puck.x, puck.y, puck.r * 2.9, 0, TAU);
     ctx.fill();
 
-    ctx.shadowBlur = 10 + state.pulse * 14;
+    ctx.shadowBlur = 10 + state.pulse * 14 + state.servePulse * 8;
     ctx.shadowColor = 'rgba(255,255,255,0.46)';
     ctx.fillStyle = '#fff';
     ctx.beginPath();
