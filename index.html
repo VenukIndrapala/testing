@@ -5,14 +5,18 @@
 
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
 
-  <meta name="theme-color" content="#000000" />
+  <meta name="theme-color" content="#1e4c7f" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
   <meta
     name="description"
-    content="Responsive air hockey game inspired by the supplied reference video."
+    content="Air hockey against the AI. First to 7 points wins."
   />
 
   <title>Air Hockey</title>
@@ -25,7 +29,7 @@
     <section class="game-wrap" aria-label="Air hockey game">
       <canvas
         id="gameCanvas"
-        aria-label="Interactive air hockey game"
+        aria-label="Air hockey table. Drag, or use the arrow keys or WASD, to move the blue mallet."
       ></canvas>
 
       <div
@@ -36,6 +40,8 @@
     </section>
   </main>
 
-  <script src="script.js"></script>
+  <noscript>This game needs JavaScript to run.</noscript>
+
+  <script src="script.js" defer></script>
 </body>
 </html>
